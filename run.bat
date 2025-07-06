@@ -1,0 +1,1 @@
+fastapi run plant-id-service.py

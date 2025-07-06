@@ -1,0 +1,125 @@
+version: '3.8'
+
+services:
+  # 植物识别API服务
+  plantid-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: plantid-api
+    ports:
+      - "8000:8000"  # API服务端口
+    volumes:
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+      - ./data:/app/data
+      - ./plantid/models:/app/plantid/models:ro  # 模型文件只读
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - plantid-network
+
+  # 植物识别Web服务
+  plantid-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: plantid-web
+    ports:
+      - "5000:5000"  # Web服务端口
+    volumes:
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+      - ./data:/app/data
+      - ./plantid/models:/app/plantid/models:ro
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    command: ["python", "web_app.py"]
+    restart: unless-stopped
+    depends_on:
+      - plantid-api
+    networks:
+      - plantid-network
+
+  # Nginx反向代理（可选）
+  nginx:
+    image: nginx:alpine
+    container_name: plantid-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - plantid-api
+      - plantid-web
+    restart: unless-stopped
+    networks:
+      - plantid-network
+
+  # Redis缓存（可选）
+  redis:
+    image: redis:alpine
+    container_name: plantid-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - plantid-network
+
+  # 监控服务（可选）
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: plantid-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - plantid-network
+
+  # Grafana监控面板（可选）
+  grafana:
+    image: grafana/grafana:latest
+    container_name: plantid-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    restart: unless-stopped
+    networks:
+      - plantid-network
+
+volumes:
+  redis-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  plantid-network:
+    driver: bridge 

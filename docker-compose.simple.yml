@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  # 植物识别API服务
+  plantid-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: plantid-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+      - ./data:/app/data
+      - ./plantid/models:/app/plantid/models:ro
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 植物识别Web服务
+  plantid-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: plantid-web
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+      - ./data:/app/data
+      - ./plantid/models:/app/plantid/models:ro
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    command: ["python", "web_app.py"]
+    restart: unless-stopped
+    depends_on:
+      - plantid-api 
